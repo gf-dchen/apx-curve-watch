@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 authors = [{ name = "Daniel Chen", email = "dchen@gfinfra.com" }]
 keywords = ["ercot", "apx", "marketsuite", "bid-curve", "energy"]
-dependencies = ["gfem", "requests>=2.31.0"]
+dependencies = ["gfem", "requests>=2.31.0", "python-dotenv>=1.0.0"]
 
 classifiers = [
     "Private :: Do Not Upload",

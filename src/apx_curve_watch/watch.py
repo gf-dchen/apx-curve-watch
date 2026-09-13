@@ -14,6 +14,7 @@ from gfem.foundry.bidding import apx_bids
 from apx_curve_watch.alert import announce
 from apx_curve_watch.config import WatchConfig
 from apx_curve_watch.diff import diff_snapshots
+from apx_curve_watch.next_day_check import NextDayBidCheck
 from apx_curve_watch.snapshot import ladder_snapshot
 from apx_curve_watch.store import CurveStore, Snapshot
 
@@ -41,6 +42,7 @@ def poll_once(config: WatchConfig, store: CurveStore) -> None:
         fordate,
         he,
         diff_snapshots(old_ladders, new_ladders),
+        new_ladders,
         teams_webhook_url=config.teams_webhook_url,
     )
     store.save(
@@ -50,16 +52,23 @@ def poll_once(config: WatchConfig, store: CurveStore) -> None:
 
 def run(config: WatchConfig) -> None:
     store = CurveStore(Path(config.storage_dir))
+    next_day_check = NextDayBidCheck(config.next_day_check_times)
     logger.info(
-        "apx-curve-watch starting: participant=%s env=%s poll=%ss resources=%s",
+        "apx-curve-watch starting: participant=%s env=%s poll=%ss resources=%s "
+        "next_day_check_times=%s",
         config.participant,
         config.env,
         config.poll_seconds,
         config.resources or "(all)",
+        [t.strftime("%H:%M") for t in config.next_day_check_times] or "(none)",
     )
     while True:
         try:
             poll_once(config, store)
         except Exception:
             logger.exception("poll failed; will retry next tick")
+        try:
+            next_day_check.maybe_run(config, datetime.now(ERCOT_TZ))
+        except Exception:
+            logger.exception("next-day bid check failed; will retry next tick")
         time.sleep(config.poll_seconds)
