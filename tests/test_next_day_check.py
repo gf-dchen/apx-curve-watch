@@ -16,6 +16,7 @@ def _config(**overrides) -> WatchConfig:
         storage_dir="./curves",
         teams_webhook_url=None,
         next_day_check_times=(time(8, 0), time(8, 15)),
+        log_file="",
     )
     base.update(overrides)
     return WatchConfig(**base)

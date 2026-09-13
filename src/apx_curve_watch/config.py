@@ -27,6 +27,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(_REPO_ROOT / ".env")
 
 
+DEFAULT_LOG_FILE = "apx-curve-watch.log"
+
+
 @dataclass(frozen=True)
 class WatchConfig:
     participant: str
@@ -36,6 +39,7 @@ class WatchConfig:
     storage_dir: str
     teams_webhook_url: str | None
     next_day_check_times: tuple[time, ...]
+    log_file: str
 
     @classmethod
     def from_env(cls) -> WatchConfig:
@@ -50,4 +54,5 @@ class WatchConfig:
             next_day_check_times=parse_check_times(
                 os.environ.get("APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES", DEFAULT_NEXT_DAY_CHECK_TIMES)
             ),
+            log_file=os.environ.get("APX_CURVE_WATCH_LOG_FILE", DEFAULT_LOG_FILE),
         )

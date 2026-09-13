@@ -20,9 +20,9 @@ watching whether or not anyone has `live_monitor.py` open.
    delta description), log a warning line, and post it to Teams if configured.
 5. Archive the new snapshot either way, so the store is a full history, not
    just a change log.
-6. Once per configured wall-clock time (default 08:00 and 08:15 CT), check that
-   *tomorrow's* book has something on file and nudge if not -- see
-   "Next-day bid check" below.
+6. Once per configured wall-clock time (default every 15/10/5 min from 08:30 to
+   10:00 CT, tightening near the DAM deadline), check that *tomorrow's* book
+   has something on file and nudge if not.
 
 ## Running it
 
@@ -50,6 +50,9 @@ Config knobs (all optional, see `.env.example` for defaults):
 - `APX_CURVE_WATCH_POLL_SECONDS` -- poll interval; default 30s. Each tick is a
   full APX round-trip, so don't set this too aggressively.
 - `APX_CURVE_WATCH_STORAGE_DIR` -- where snapshots are archived; default `./curves`.
+- `APX_CURVE_WATCH_LOG_FILE` -- where log output is written, in addition to the
+  console; default `apx-curve-watch.log` (relative to wherever you run it from).
+  Set it empty to disable file logging and keep console-only.
 - `TEAMS_WEBHOOK_URL` -- optional. Unset means console + log only; set it and every
   announcement also posts to that Teams incoming webhook.
 - `APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES` -- Central-time wall clocks at which to
@@ -102,7 +105,8 @@ observation.
 
 ## Not yet done
 
-- No retention/pruning of old snapshots yet.
+- No retention/pruning of old snapshots yet (expected to stay small: only
+  changes, plus one `latest.json` per hour, get archived).
 - Deploying this as an always-running background process (systemd timer, etc.)
   isn't set up -- right now it's `uv run apx-curve-watch` in a terminal.
 

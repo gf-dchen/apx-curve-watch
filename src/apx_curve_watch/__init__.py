@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from pathlib import Path
 
 from gfem.foundry.bidding import apx_bids
 
@@ -16,8 +17,22 @@ from apx_curve_watch.watch import current_operating_hour, run
 __all__ = ["main"]
 
 
+def _configure_logging(log_file: str) -> None:
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+    console = logging.StreamHandler()
+    console.setFormatter(formatter)
+    handlers: list[logging.Handler] = [console]
+
+    if log_file:
+        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
+
+    logging.basicConfig(level=logging.INFO, handlers=handlers, force=True)
+
+
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     parser = argparse.ArgumentParser(prog="apx-curve-watch")
     parser.add_argument(
         "--table",
@@ -27,6 +42,7 @@ def main() -> int:
     args = parser.parse_args()
 
     config = WatchConfig.from_env()
+    _configure_logging(config.log_file)
     if not config.participant:
         print("APX_MARKET_PARTICIPANT is not set", file=sys.stderr)
         return 1
