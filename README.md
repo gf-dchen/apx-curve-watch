@@ -52,10 +52,14 @@ Config knobs (all optional, see `.env.example` for defaults):
 - `APX_CURVE_WATCH_STORAGE_DIR` -- where snapshots are archived; default `./curves`.
 - `TEAMS_WEBHOOK_URL` -- optional. Unset means console + log only; set it and every
   announcement also posts to that Teams incoming webhook.
-- `APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES` -- comma-separated Central-time wall clock
-  times (default `08:00,08:15`) at which to check that *tomorrow's* energy book has
-  something on file, and nudge if not. Each configured time fires at most once per
-  day, on the first poll tick at or after that time -- not on every tick. With
+- `APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES` -- Central-time wall clocks at which to
+  check that *tomorrow's* energy book has something on file, and nudge if not.
+  Default `08:30-09:00:15,09:00-09:30:10,09:30-10:00:5`: every 15 min from
+  08:30-09:00, every 10 min from 09:00-09:30, every 5 min from 09:30-10:00 --
+  tightening as the DAM deadline approaches. Comma-separated; each entry is
+  either a single time (`08:00`, fires once) or a window with a cadence
+  (`08:30-09:00:15`). Every resolved time fires at most once per day, on the
+  first poll tick at or after it -- not on every tick. With
   `APX_CURVE_WATCH_RESOURCES` set, a resource missing from tomorrow's book is
   named individually; left at "watch everything", only a completely empty book
   is flagged (there's no fixed resource list to check names against).

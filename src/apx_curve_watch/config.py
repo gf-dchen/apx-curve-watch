@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 from apx_curve_watch.schedule import parse_check_times
 
-DEFAULT_NEXT_DAY_CHECK_TIMES = "08:00,08:15"
+DEFAULT_NEXT_DAY_CHECK_TIMES = "08:30-09:00:15,09:00-09:30:10,09:30-10:00:5"
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
