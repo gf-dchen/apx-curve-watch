@@ -37,7 +37,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "gfem", editable = "../../gfem-data" },
+    { name = "gfem", editable = "../gfem-data" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "requests", specifier = ">=2.31.0" },
 ]
@@ -372,7 +372,7 @@ wheels = [
 [[package]]
 name = "gfem"
 version = "0.34.0"
-source = { editable = "../../gfem-data" }
+source = { editable = "../gfem-data" }
 dependencies = [
     { name = "boto3" },
     { name = "botocore" },

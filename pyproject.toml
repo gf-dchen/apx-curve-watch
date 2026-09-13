@@ -36,7 +36,7 @@ package = true
 # Sibling checkout on this machine -- this is a desk tool that runs where gfem-data
 # already lives, not a deployed artifact. Point this at a git URL instead if that
 # ever changes.
-gfem = { path = "../../gfem-data", editable = true }
+gfem = { path = "../gfem-data", editable = true }
 
 [tool.ruff]
 line-length = 100
