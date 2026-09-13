@@ -14,6 +14,7 @@ from gfem.foundry.bidding import apx_bids
 from apx_curve_watch.alert import announce
 from apx_curve_watch.config import WatchConfig
 from apx_curve_watch.diff import diff_snapshots
+from apx_curve_watch.hour_rollover import HourRolloverAnnouncer
 from apx_curve_watch.next_day_check import NextDayBidCheck
 from apx_curve_watch.snapshot import ladder_snapshot
 from apx_curve_watch.store import CurveStore, Snapshot
@@ -29,7 +30,7 @@ def current_operating_hour(now: datetime | None = None) -> tuple[date, int]:
     return local.date(), local.hour + 1
 
 
-def poll_once(config: WatchConfig, store: CurveStore) -> None:
+def poll_once(config: WatchConfig, store: CurveStore, rollover: HourRolloverAnnouncer) -> None:
     fordate, he = current_operating_hour()
     bidset = apx_bids.fetch_bidset(fordate, config.participant, market_status="PRE", env=config.env)
     if bidset is None:
@@ -48,11 +49,13 @@ def poll_once(config: WatchConfig, store: CurveStore) -> None:
     store.save(
         Snapshot(fordate=fordate, he=he, observed_at=datetime.now(ERCOT_TZ), ladders=new_ladders)
     )
+    rollover.maybe_run(config, bidset, fordate, he)
 
 
 def run(config: WatchConfig) -> None:
     store = CurveStore(Path(config.storage_dir))
     next_day_check = NextDayBidCheck(config.next_day_check_times)
+    rollover = HourRolloverAnnouncer()
     logger.info(
         "apx-curve-watch starting: participant=%s env=%s poll=%ss resources=%s "
         "next_day_check_times=%s",
@@ -64,7 +67,7 @@ def run(config: WatchConfig) -> None:
     )
     while True:
         try:
-            poll_once(config, store)
+            poll_once(config, store, rollover)
         except Exception:
             logger.exception("poll failed; will retry next tick")
         try:

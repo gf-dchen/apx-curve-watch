@@ -44,6 +44,23 @@ def announce(
     _broadcast(render(fordate, he, diffs, new_ladders), teams_webhook_url)
 
 
+def render_hour(fordate: date, he: int, ladders: Ladders, label: str) -> str:
+    lines = [f"[{fordate} HE{he:02d}] {label}:"]
+    for resource, points in ladders.items():
+        lines.append(f"  {resource}:")
+        if not points:
+            lines.append("    (no offers on file yet)")
+        for mw, price in points:
+            lines.append(f"    {mw:>9.3f} MW @ {price:>10.4f}")
+    return "\n".join(lines)
+
+
+def announce_hour(
+    fordate: date, he: int, ladders: Ladders, label: str, *, teams_webhook_url: str | None = None
+) -> None:
+    _broadcast(render_hour(fordate, he, ladders, label), teams_webhook_url)
+
+
 def render_missing_bids(check_label: str, fordate: date, missing: tuple[str, ...]) -> str:
     return (
         f"[{check_label} CT check] no energy bids on file for {fordate} yet: {', '.join(missing)}"
