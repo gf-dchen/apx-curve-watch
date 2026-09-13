@@ -1,0 +1,51 @@
+[project]
+name = "apx-curve-watch"
+version = "0.1.0"
+description = "Watch ERCOT dispatch schedule bid curves on file at APX and log when they move"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Daniel Chen", email = "dchen@gfinfra.com" }]
+keywords = ["ercot", "apx", "marketsuite", "bid-curve", "energy"]
+dependencies = ["gfem", "requests>=2.31.0"]
+
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.scripts]
+apx-curve-watch = "apx_curve_watch:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/apx_curve_watch"]
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
+# Sibling checkout on this machine -- this is a desk tool that runs where gfem-data
+# already lives, not a deployed artifact. Point this at a git URL instead if that
+# ever changes.
+gfem = { path = "../../gfem-data", editable = true }
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
