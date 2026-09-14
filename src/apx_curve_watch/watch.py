@@ -44,6 +44,8 @@ def poll_once(config: WatchConfig, store: CurveStore, rollover: HourRolloverAnno
         he,
         diff_snapshots(old_ladders, new_ladders),
         new_ladders,
+        bidset=bidset,
+        resources=config.resources,
         teams_webhook_url=config.teams_webhook_url,
     )
     store.save(

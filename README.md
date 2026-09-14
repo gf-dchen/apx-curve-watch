@@ -76,9 +76,17 @@ gives you into `TEAMS_WEBHOOK_URL` in `.env`.
 That template posts an **Adaptive Card**, and its "Post card" action expects
 the webhook's request body to itself BE a valid card -- confirmed live against
 a real flow, which rejected a plain `{"text": ...}` body with
-`Property 'type' must be 'AdaptiveCard'`. `teams.py` sends one `TextBlock` per
-line of the message (monospace, so the `--table` layout and alert formatting
-stay aligned), not a bare text field.
+`Property 'type' must be 'AdaptiveCard'`.
+
+The message is wrapped in a **`CodeBlock`** element (`teams_codeblock.py`),
+not a bare `TextBlock` -- a `TextBlock` wraps text and loses alignment (a
+single multi-line one even collapses its own newlines), and a real `Table`
+element squeezes its columns unreadably thin in Teams' narrow card pane, both
+confirmed live. `CodeBlock` (Teams web/desktop only, not mobile) previews only
+its first ~10 lines when collapsed, but expanding it reveals the rest via a
+real scroll -- nothing is silently lost, it just needs a click. Past ~9 lines,
+Teams' line-number gutter has a cosmetic bug where double-digit numbers
+overlap the row content; there's no schema property to turn line numbers off.
 
 ## Today's curve, as a table
 
