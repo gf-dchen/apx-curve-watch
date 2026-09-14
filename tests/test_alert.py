@@ -41,15 +41,15 @@ def test_render_missing_bids_names_the_check_time_date_and_gaps():
 
 def test_render_hour_lists_every_resource_with_its_points():
     ladders = {"SAH_ESR1": [[150.0, 50.0]], "SAH_ESR2": [[100.0, 45.0]]}
-    message = render_hour(date(2026, 9, 13), 17, ladders, "next hour")
+    message = render_hour(date(2026, 9, 13), 17, ladders, "new hour")
     assert "HE17" in message
-    assert "next hour" in message
+    assert "new hour" in message
     assert "SAH_ESR1" in message
     assert "150.000 MW @    50.0000" in message
 
 
 def test_render_hour_notes_when_a_resource_has_nothing_on_file():
-    message = render_hour(date(2026, 9, 13), 17, {"SAH_ESR1": []}, "next hour")
+    message = render_hour(date(2026, 9, 13), 17, {"SAH_ESR1": []}, "new hour")
     assert "(no offers on file yet)" in message
 
 

@@ -1,7 +1,8 @@
-"""Announce the upcoming hour's schedule right when the operating hour rolls over.
+"""Announce the newly-current hour's schedule right when the operating hour
+rolls over -- e.g. rolling into HE22 announces HE22 itself, not HE23.
 
 Reuses whichever ``BidSet`` the caller already fetched this tick -- a single
-``fetch_bidset`` call returns the whole day, so the next hour's curve is already
+``fetch_bidset`` call returns the whole day, so that hour's curve is already
 in hand and this needs no extra APX round-trip.
 """
 
@@ -30,10 +31,5 @@ class HourRolloverAnnouncer:
         if not rolled_over:
             return
 
-        next_he = he + 1
-        if next_he > 24:  # next hour is tomorrow's HE1, a different operating day
-            return
-        ladders = ladder_snapshot(bidset, next_he, config.resources)
-        announce_hour(
-            fordate, next_he, ladders, "next hour", teams_webhook_url=config.teams_webhook_url
-        )
+        ladders = ladder_snapshot(bidset, he, config.resources)
+        announce_hour(fordate, he, ladders, "new hour", teams_webhook_url=config.teams_webhook_url)

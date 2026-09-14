@@ -34,7 +34,7 @@ def _capture(monkeypatch):
 
 def test_first_tick_ever_does_not_announce(monkeypatch):
     calls = _capture(monkeypatch)
-    bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
+    bidset = _bidset(OfferCurve("SAH_ESR1", 15, [(150.0, 50.0)], "Slope", "Accepted"))
 
     HourRolloverAnnouncer().maybe_run(_config(), bidset, date(2026, 9, 13), 15)
     assert calls == []
@@ -42,7 +42,7 @@ def test_first_tick_ever_does_not_announce(monkeypatch):
 
 def test_same_hour_on_a_later_tick_does_not_announce(monkeypatch):
     calls = _capture(monkeypatch)
-    bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
+    bidset = _bidset(OfferCurve("SAH_ESR1", 15, [(150.0, 50.0)], "Slope", "Accepted"))
 
     check = HourRolloverAnnouncer()
     check.maybe_run(_config(), bidset, date(2026, 9, 13), 15)
@@ -50,25 +50,26 @@ def test_same_hour_on_a_later_tick_does_not_announce(monkeypatch):
     assert calls == []
 
 
-def test_hour_advancing_announces_the_new_next_hour(monkeypatch):
+def test_hour_advancing_announces_the_newly_current_hour_itself(monkeypatch):
     calls = _capture(monkeypatch)
-    bidset = _bidset(OfferCurve("SAH_ESR1", 17, [(150.0, 50.0)], "Slope", "Accepted"))
+    bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
 
     check = HourRolloverAnnouncer()
     check.maybe_run(_config(), bidset, date(2026, 9, 13), 15)  # first tick, no announce
     check.maybe_run(_config(), bidset, date(2026, 9, 13), 16)  # rolled over to HE16
     [(args, kwargs)] = calls
     fordate, he, ladders, label = args
-    assert he == 17  # the hour AFTER the one we just rolled into
-    assert label == "next hour"
+    assert he == 16  # the hour we just rolled INTO, not one past it
+    assert label == "new hour"
     assert ladders == {"SAH_ESR1": [[150.0, 50.0]]}
 
 
-def test_he24_rollover_does_not_reach_into_tomorrow(monkeypatch):
+def test_he24_rollover_still_announces_he24_itself(monkeypatch):
     calls = _capture(monkeypatch)
-    bidset = _bidset()
+    bidset = _bidset(OfferCurve("SAH_ESR1", 24, [(150.0, 50.0)], "Slope", "Accepted"))
 
     check = HourRolloverAnnouncer()
     check.maybe_run(_config(), bidset, date(2026, 9, 13), 23)
     check.maybe_run(_config(), bidset, date(2026, 9, 13), 24)
-    assert calls == []
+    [(args, _kwargs)] = calls
+    assert args[1] == 24
