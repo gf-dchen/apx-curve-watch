@@ -38,12 +38,18 @@ class NextDayBidCheck:
         self._fired: set[tuple[date, time]] = set()
 
     def maybe_run(self, config: WatchConfig, now: datetime) -> None:
-        for check_time in self.check_times:
-            key = (now.date(), check_time)
-            if now.time() < check_time or key in self._fired:
-                continue
-            self._fired.add(key)
-            self._check(config, now, check_time)
+        """Runs at most one real check per call, even if several configured
+        times are newly due at once (e.g. the process starts mid-morning,
+        well past most of the schedule) -- otherwise a late start fires one
+        near-identical fetch and announcement per already-passed time, back
+        to back, instead of a single catch-up check."""
+        today = now.date()
+        due = [t for t in self.check_times if now.time() >= t and (today, t) not in self._fired]
+        if not due:
+            return
+        for check_time in due:
+            self._fired.add((today, check_time))
+        self._check(config, now, due[-1])
 
     def _check(self, config: WatchConfig, now: datetime, check_time: time) -> None:
         tomorrow = now.date() + timedelta(days=1)

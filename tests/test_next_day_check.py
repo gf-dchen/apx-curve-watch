@@ -75,3 +75,28 @@ def test_check_fires_again_the_next_day(monkeypatch):
     check.maybe_run(_config(), datetime(2026, 9, 13, 8, 0))
     check.maybe_run(_config(), datetime(2026, 9, 14, 8, 0))
     assert len(calls) == 2
+
+
+def test_a_late_start_collapses_every_already_passed_time_into_one_check(monkeypatch):
+    # Starting the process at 19:13 -- well past all 12 default check times --
+    # must not fire one fetch/announcement per already-passed time.
+    fetch_calls = []
+    announce_calls = []
+    monkeypatch.setattr(ndc, "announce_missing_bids", lambda *a, **k: announce_calls.append((a, k)))
+
+    def fake_fetch(*args, **kwargs):
+        fetch_calls.append((args, kwargs))
+        return None
+
+    monkeypatch.setattr(ndc.apx_bids, "fetch_bidset", fake_fetch)
+
+    check = NextDayBidCheck((time(8, 0), time(8, 15), time(8, 30)))
+    check.maybe_run(_config(), datetime(2026, 9, 13, 19, 13))
+    assert len(fetch_calls) == 1
+    assert len(announce_calls) == 1
+    (check_label, *_rest), _kwargs = announce_calls[0]
+    assert check_label == "08:30"  # the latest of the collapsed times, used as the label
+
+    # None of the three should be able to fire again later that same day.
+    check.maybe_run(_config(), datetime(2026, 9, 13, 20, 0))
+    assert len(fetch_calls) == 1
