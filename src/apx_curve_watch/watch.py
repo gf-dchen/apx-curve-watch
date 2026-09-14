@@ -38,16 +38,23 @@ def poll_once(config: WatchConfig, store: CurveStore, rollover: HourRolloverAnno
         return
 
     new_ladders = ladder_snapshot(bidset, he, config.resources)
-    old_ladders = store.load_latest(fordate, he) or {}
-    announce(
-        fordate,
-        he,
-        diff_snapshots(old_ladders, new_ladders),
-        new_ladders,
-        bidset=bidset,
-        resources=config.resources,
-        teams_webhook_url=config.teams_webhook_url,
-    )
+    previous = store.load_latest(fordate, he)
+    if previous is not None:
+        # None means we've never tracked this hour before (e.g. right after
+        # rolling into it) -- there's nothing to diff against yet, so this
+        # poll just establishes the baseline rather than announcing every
+        # existing point as a false-positive "change". An hour previously
+        # stored as genuinely empty ({}) still diffs normally: a resource
+        # newly appearing there IS a real change.
+        announce(
+            fordate,
+            he,
+            diff_snapshots(previous, new_ladders),
+            new_ladders,
+            bidset=bidset,
+            resources=config.resources,
+            teams_webhook_url=config.teams_webhook_url,
+        )
     store.save(
         Snapshot(fordate=fordate, he=he, observed_at=datetime.now(ERCOT_TZ), ladders=new_ladders)
     )
