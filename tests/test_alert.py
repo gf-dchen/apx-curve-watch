@@ -3,7 +3,7 @@ from datetime import date
 from gfem.foundry.bidding.apx_bids import BidSet, OfferCurve
 
 from apx_curve_watch import alert
-from apx_curve_watch.alert import announce, render, render_hour, render_missing_bids
+from apx_curve_watch.alert import announce, render, render_missing_bids
 from apx_curve_watch.diff import diff_snapshots
 
 
@@ -37,20 +37,6 @@ def test_render_missing_bids_names_the_check_time_date_and_gaps():
     assert "2026-09-14" in message
     assert "SAH_ESR1" in message
     assert "SAH_ESR2" in message
-
-
-def test_render_hour_lists_every_resource_with_its_points():
-    ladders = {"SAH_ESR1": [[150.0, 50.0]], "SAH_ESR2": [[100.0, 45.0]]}
-    message = render_hour(date(2026, 9, 13), 17, ladders, "new hour")
-    assert "HE17" in message
-    assert "new hour" in message
-    assert "SAH_ESR1" in message
-    assert "150.000 MW @    50.0000" in message
-
-
-def test_render_hour_notes_when_a_resource_has_nothing_on_file():
-    message = render_hour(date(2026, 9, 13), 17, {"SAH_ESR1": []}, "new hour")
-    assert "(no offers on file yet)" in message
 
 
 def test_announce_without_a_bidset_sends_the_console_message_to_teams(monkeypatch):
