@@ -105,8 +105,18 @@ def test_a_charge_only_hour_that_sold_as_still_needs_the_full_ladder():
     assert finding.lines[0] == "SAH_ESR1 HE12: tops out at 0 MW, with ECRS 200"
 
 
-def test_an_hour_with_as_and_no_energy_curve_at_all_is_flagged():
+def test_an_hour_with_as_and_no_energy_curve_at_all_is_left_alone():
+    # No curve says nothing to the optimizer about that hour's energy, which is
+    # a different thing from telling it the ceiling is zero.
     book = _book([], {r: {13: {"ECRS": 200.0}} for r in BOTH})
+    assert check_discharge_headroom(book, BOTH, 200.0) is None
+
+
+def test_a_zeroed_out_placeholder_curve_still_counts_as_having_one():
+    # APX holds these as a real curve offering nothing (seen live in HE13/14/22
+    # of the 9/18 book) -- a curve on file topping out at 0 MW, not an absent one.
+    placeholder = [OfferCurve(r, 13, [(0.0, 0.0)], "Slope", "Accepted") for r in BOTH]
+    book = _book(placeholder, {r: {13: {"ECRS": 200.0}} for r in BOTH})
     finding = check_discharge_headroom(book, BOTH, 200.0)
     assert finding is not None
     assert finding.lines[0] == "SAH_ESR1 HE13: tops out at 0 MW, with ECRS 200"
