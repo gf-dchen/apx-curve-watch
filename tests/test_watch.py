@@ -49,36 +49,42 @@ def _bidset(*curves: OfferCurve) -> BidSet:
     return BidSet(fordate=date(2026, 9, 13), market_status="PRE", curves=list(curves))
 
 
+def _announced(monkeypatch):
+    """Capture the changes list handed to ``announce`` on each tick."""
+    ticks = []
+    monkeypatch.setattr(watch, "announce", lambda fordate, changes, **k: ticks.append(changes))
+    return ticks
+
+
 def test_first_observation_of_an_hour_does_not_announce(monkeypatch, tmp_path):
     monkeypatch.setattr(watch, "current_operating_hour", lambda: (date(2026, 9, 13), 16))
     bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
     monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: bidset)
-
-    calls = []
-    monkeypatch.setattr(watch, "announce", lambda *a, **k: calls.append((a, k)))
+    ticks = _announced(monkeypatch)
 
     store = CurveStore(tmp_path)
     poll_once(_config(), store)
 
-    assert calls == []  # no baseline existed yet -- must not announce
+    assert ticks == [[]]  # no baseline existed yet -- must not announce
     assert store.load_latest(date(2026, 9, 13), 16) == {"SAH_ESR1": [[150.0, 50.0]]}
 
 
 def test_second_poll_diffs_against_the_stored_baseline(monkeypatch, tmp_path):
     monkeypatch.setattr(watch, "current_operating_hour", lambda: (date(2026, 9, 13), 16))
-    calls = []
-    monkeypatch.setattr(watch, "announce", lambda *a, **k: calls.append((a, k)))
+    ticks = _announced(monkeypatch)
     store = CurveStore(tmp_path)
 
     first = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
     monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: first)
     poll_once(_config(), store)
-    assert calls == []  # first observation
+    assert ticks[-1] == []  # first observation
 
     second = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 60.0)], "Slope", "Accepted"))
     monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: second)
     poll_once(_config(), store)
-    assert len(calls) == 1  # real change against the now-existing baseline
+    [change] = ticks[-1]  # real change against the now-existing baseline
+    assert change.he == 16
+    assert change.ladders == {"SAH_ESR1": [[150.0, 60.0]]}
 
 
 def test_a_previously_stored_empty_hour_still_diffs_normally(monkeypatch, tmp_path):
@@ -88,10 +94,64 @@ def test_a_previously_stored_empty_hour_still_diffs_normally(monkeypatch, tmp_pa
         Snapshot(fordate=date(2026, 9, 13), he=16, observed_at=datetime.now(ERCOT_TZ), ladders={})
     )
 
-    calls = []
-    monkeypatch.setattr(watch, "announce", lambda *a, **k: calls.append((a, k)))
+    ticks = _announced(monkeypatch)
     bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
     monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: bidset)
 
     poll_once(_config(), store)
-    assert len(calls) == 1  # a resource newly appearing after a real {} baseline IS a change
+    # a resource newly appearing after a real {} baseline IS a change
+    assert [c.he for c in ticks[-1]] == [16]
+
+
+def test_an_edit_to_a_later_hour_is_news_now_not_when_that_hour_arrives(monkeypatch, tmp_path):
+    monkeypatch.setattr(watch, "current_operating_hour", lambda: (date(2026, 9, 13), 14))
+    ticks = _announced(monkeypatch)
+    store = CurveStore(tmp_path)
+
+    first = _bidset(OfferCurve("SAH_ESR1", 20, [(0.0, 50.0), (100.0, 50.0)], "Slope", "Accepted"))
+    monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: first)
+    poll_once(_config(), store)
+
+    second = _bidset(OfferCurve("SAH_ESR1", 20, [(0.0, 50.0), (200.0, 50.0)], "Slope", "Accepted"))
+    monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: second)
+    poll_once(_config(), store)
+
+    assert [c.he for c in ticks[-1]] == [20]  # six hours before HE20 is current
+
+
+def test_a_block_rewrite_is_one_announcement_naming_every_hour(monkeypatch, tmp_path):
+    monkeypatch.setattr(watch, "current_operating_hour", lambda: (date(2026, 9, 13), 14))
+    ticks = _announced(monkeypatch)
+    store = CurveStore(tmp_path)
+
+    def book(price):
+        return _bidset(
+            *(
+                OfferCurve("SAH_ESR1", he, [(0.0, price), (200.0, price)], "Slope", "Accepted")
+                for he in (15, 16, 17)
+            )
+        )
+
+    monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: book(50.0))
+    poll_once(_config(), store)
+    monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: book(80.0))
+    poll_once(_config(), store)
+
+    assert len(ticks) == 2  # one announcement per tick, not one per hour
+    assert [c.he for c in ticks[-1]] == [15, 16, 17]
+
+
+def test_an_unchanged_hour_is_not_archived_again_every_tick(monkeypatch, tmp_path):
+    # 24 hours x every tick would bury the real history -- the store is a change
+    # log, so a quiet hour keeps exactly its baseline snapshot.
+    monkeypatch.setattr(watch, "current_operating_hour", lambda: (date(2026, 9, 13), 16))
+    _announced(monkeypatch)
+    bidset = _bidset(OfferCurve("SAH_ESR1", 16, [(150.0, 50.0)], "Slope", "Accepted"))
+    monkeypatch.setattr(watch.apx_bids, "fetch_bidset", lambda *a, **k: bidset)
+
+    store = CurveStore(tmp_path)
+    for _ in range(5):
+        poll_once(_config(), store)
+
+    archived = sorted(p.name for p in (tmp_path / "2026-09-13" / "HH16").glob("*.json"))
+    assert len(archived) == 2  # the baseline snapshot + latest.json, nothing more

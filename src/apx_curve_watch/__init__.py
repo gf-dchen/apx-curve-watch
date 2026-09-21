@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import timedelta
 from pathlib import Path
 
 from gfem.foundry.bidding import apx_bids
 
+from apx_curve_watch.bid_review import render_review, review, review_header
 from apx_curve_watch.config import WatchConfig
+from apx_curve_watch.day_book import fetch_day_book
 from apx_curve_watch.table import render_table
 from apx_curve_watch.watch import current_operating_hour, run
 
@@ -39,6 +42,12 @@ def main() -> int:
         action="store_true",
         help="print today's full-day energy ladder as a table and exit, instead of polling",
     )
+    parser.add_argument(
+        "--review",
+        action="store_true",
+        help="run the day-ahead reasonability checks against tomorrow's book and exit, "
+        "instead of polling -- the same checks the morning schedule runs",
+    )
     args = parser.parse_args()
 
     config = WatchConfig.from_env()
@@ -59,6 +68,27 @@ def main() -> int:
             return 1
         print(render_table(bidset, config.resources))
         return 0
+
+    if args.review:
+        tomorrow = current_operating_hour()[0] + timedelta(days=1)
+        book = fetch_day_book(tomorrow, config.participant, env=config.env)
+        if book is None or book.bidset is None:
+            print(f"no bidset for {tomorrow} (fetch failed, or nothing on file yet)")
+            return 1
+        findings = review(
+            book,
+            config.resources,
+            charge_block_hours=config.charge_block_hours,
+            charge_block_mwh=config.charge_block_mwh,
+            min_discharge_mw=config.min_discharge_mw,
+            check_symmetry=config.check_esr_symmetry,
+        )
+        if not findings:
+            print(f"{tomorrow} day-ahead bid passes every check")
+            return 0
+        print(review_header("", tomorrow, findings))
+        print(render_review(findings))
+        return 1
 
     run(config)
     return 0

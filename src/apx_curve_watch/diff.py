@@ -31,6 +31,20 @@ class ResourceDiff:
     segments: list[SegmentChange]
 
 
+@dataclass(frozen=True)
+class HourChange:
+    """One hour-ending that moved, with the ladders it moved to.
+
+    A single re-submission routinely rewrites a whole block of hours at once, so
+    a tick's changes are collected as a list of these and announced together --
+    one message naming every hour that moved, not one message per hour.
+    """
+
+    he: int
+    diffs: list[ResourceDiff]
+    ladders: Ladders
+
+
 def diff_snapshots(old: Ladders, new: Ladders) -> list[ResourceDiff]:
     """Every resource whose ladder changed, ``old`` -> ``new``. Empty if nothing moved."""
     out: list[ResourceDiff] = []

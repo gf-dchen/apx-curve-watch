@@ -1,9 +1,14 @@
-"""Scheduled checks that tomorrow's energy book has something on file.
+"""Scheduled checks on tomorrow's book: is it there, and does it look right?
 
-Runs at fixed wall-clock times (e.g. 08:00 and 08:15 CT), not on every poll
+Runs at fixed wall-clock times (e.g. 08:30 and 09:00 CT), not on every poll
 tick, so a quiet morning gets exactly one nudge per configured time rather than
 one every 30 seconds -- ``NextDayBidCheck`` tracks which (date, time) pairs have
 already fired.
+
+Two announcements come out of one fetch, in escalating order: nothing on file at
+all (``announce_missing_bids``), or a book that is on file but fails a desk rule
+(``announce_bid_review``, rules in ``bid_review``). A book that's there and looks
+right says nothing.
 """
 
 from __future__ import annotations
@@ -13,8 +18,10 @@ from datetime import date, datetime, time, timedelta
 
 from gfem.foundry.bidding import apx_bids
 
-from apx_curve_watch.alert import announce_missing_bids
+from apx_curve_watch.alert import announce_bid_review, announce_missing_bids
+from apx_curve_watch.bid_review import review
 from apx_curve_watch.config import WatchConfig
+from apx_curve_watch.day_book import fetch_day_book
 
 logger = logging.getLogger("apx_curve_watch")
 
@@ -53,13 +60,26 @@ class NextDayBidCheck:
 
     def _check(self, config: WatchConfig, now: datetime, check_time: time) -> None:
         tomorrow = now.date() + timedelta(days=1)
-        bidset = apx_bids.fetch_bidset(
-            tomorrow, config.participant, market_status="PRE", env=config.env
-        )
-        missing = missing_resources(bidset, config.resources)
-        announce_missing_bids(
-            check_time.strftime("%H:%M"),
+        label = check_time.strftime("%H:%M")
+        book = fetch_day_book(tomorrow, config.participant, env=config.env)
+        missing = missing_resources(book.bidset if book else None, config.resources)
+        announce_missing_bids(label, tomorrow, missing, teams_webhook_url=config.teams_webhook_url)
+        if book is None or missing:
+            # A fetch failure, or a resource with nothing on file at all: the
+            # nudge above already covers it, and reviewing a book that isn't
+            # there just restates the same gap once per rule (an absent ESR
+            # would fail the symmetry rule in all 24 hours).
+            return
+        announce_bid_review(
+            label,
             tomorrow,
-            missing,
+            review(
+                book,
+                config.resources,
+                charge_block_hours=config.charge_block_hours,
+                charge_block_mwh=config.charge_block_mwh,
+                min_discharge_mw=config.min_discharge_mw,
+                check_symmetry=config.check_esr_symmetry,
+            ),
             teams_webhook_url=config.teams_webhook_url,
         )

@@ -48,7 +48,7 @@ def test_missing_resources_all_missing_when_bidset_is_none():
 def test_check_does_not_fire_before_the_configured_time(monkeypatch):
     calls = []
     monkeypatch.setattr(ndc, "announce_missing_bids", lambda *a, **k: calls.append((a, k)))
-    monkeypatch.setattr(ndc.apx_bids, "fetch_bidset", lambda *a, **k: None)
+    monkeypatch.setattr(ndc, "fetch_day_book", lambda *a, **k: None)
 
     check = NextDayBidCheck((time(8, 0),))
     check.maybe_run(_config(), datetime(2026, 9, 13, 7, 59))
@@ -58,7 +58,7 @@ def test_check_does_not_fire_before_the_configured_time(monkeypatch):
 def test_check_fires_once_at_or_after_the_configured_time(monkeypatch):
     calls = []
     monkeypatch.setattr(ndc, "announce_missing_bids", lambda *a, **k: calls.append((a, k)))
-    monkeypatch.setattr(ndc.apx_bids, "fetch_bidset", lambda *a, **k: None)
+    monkeypatch.setattr(ndc, "fetch_day_book", lambda *a, **k: None)
 
     check = NextDayBidCheck((time(8, 0),))
     check.maybe_run(_config(), datetime(2026, 9, 13, 8, 0))
@@ -69,7 +69,7 @@ def test_check_fires_once_at_or_after_the_configured_time(monkeypatch):
 def test_check_fires_again_the_next_day(monkeypatch):
     calls = []
     monkeypatch.setattr(ndc, "announce_missing_bids", lambda *a, **k: calls.append((a, k)))
-    monkeypatch.setattr(ndc.apx_bids, "fetch_bidset", lambda *a, **k: None)
+    monkeypatch.setattr(ndc, "fetch_day_book", lambda *a, **k: None)
 
     check = NextDayBidCheck((time(8, 0),))
     check.maybe_run(_config(), datetime(2026, 9, 13, 8, 0))
@@ -88,7 +88,7 @@ def test_a_late_start_collapses_every_already_passed_time_into_one_check(monkeyp
         fetch_calls.append((args, kwargs))
         return None
 
-    monkeypatch.setattr(ndc.apx_bids, "fetch_bidset", fake_fetch)
+    monkeypatch.setattr(ndc, "fetch_day_book", fake_fetch)
 
     check = NextDayBidCheck((time(8, 0), time(8, 15), time(8, 30)))
     check.maybe_run(_config(), datetime(2026, 9, 13, 19, 13))
@@ -100,3 +100,76 @@ def test_a_late_start_collapses_every_already_passed_time_into_one_check(monkeyp
     # None of the three should be able to fire again later that same day.
     check.maybe_run(_config(), datetime(2026, 9, 13, 20, 0))
     assert len(fetch_calls) == 1
+
+
+def _day_book(curves=(), as_offers=None):
+    from apx_curve_watch.day_book import DayBook
+
+    return DayBook(
+        fordate=date(2026, 9, 14),
+        bidset=BidSet(fordate=date(2026, 9, 14), market_status="PRE", curves=list(curves)),
+        as_offers=as_offers or {},
+    )
+
+
+def _wire(monkeypatch, book):
+    """Patch the fetch + both announcements; return the two call logs."""
+    missing_calls, review_calls = [], []
+    monkeypatch.setattr(ndc, "fetch_day_book", lambda *a, **k: book)
+    monkeypatch.setattr(ndc, "announce_missing_bids", lambda *a, **k: missing_calls.append(a))
+    monkeypatch.setattr(ndc, "announce_bid_review", lambda *a, **k: review_calls.append(a))
+    return missing_calls, review_calls
+
+
+def test_a_book_on_file_is_reviewed_against_the_desk_rules(monkeypatch):
+    # 100 MW of discharge in an hour that also bids ECRS -- rule 2's case.
+    book = _day_book(
+        [OfferCurve("SAH_ESR1", 20, [(0.0, 65.0), (100.0, 65.0)], "Slope", "Accepted")],
+        {"SAH_ESR1": {20: {"ECRS": 100.0}}},
+    )
+    _missing, review_calls = _wire(monkeypatch, book)
+
+    NextDayBidCheck((time(8, 0),)).maybe_run(_config(), datetime(2026, 9, 13, 8, 0))
+
+    assert len(review_calls) == 1
+    check_label, fordate, findings = review_calls[0]
+    assert (check_label, fordate) == ("08:00", date(2026, 9, 14))
+    assert "discharge-headroom" in [f.kind for f in findings]
+
+
+def test_a_book_that_passes_every_rule_reports_nothing(monkeypatch):
+    curves = [
+        OfferCurve(r, he, [(-mw, 25.0), (0.0, 25.0)], "Slope", "Accepted")
+        for r in ("SAH_ESR1", "SAH_ESR2")
+        for he, mw in ((9, 100.0), (10, 200.0), (11, 200.0))
+    ]
+    _missing, review_calls = _wire(monkeypatch, _day_book(curves))
+
+    NextDayBidCheck((time(8, 0),)).maybe_run(
+        _config(resources=("SAH_ESR1", "SAH_ESR2")), datetime(2026, 9, 13, 8, 0)
+    )
+
+    assert review_calls[0][2] == []
+
+
+def test_a_failed_fetch_is_not_reviewed(monkeypatch):
+    missing_calls, review_calls = _wire(monkeypatch, None)
+
+    NextDayBidCheck((time(8, 0),)).maybe_run(_config(), datetime(2026, 9, 13, 8, 0))
+
+    assert len(missing_calls) == 1  # the nudge still goes out
+    assert review_calls == []
+
+
+def test_a_resource_with_nothing_on_file_is_nudged_not_reviewed(monkeypatch):
+    # An absent ESR would otherwise fail the symmetry rule in all 24 hours, on
+    # top of the nudge that already says the book isn't there.
+    book = _day_book([OfferCurve("SAH_ESR1", 9, [(-200.0, 25.0)], "Slope", "Accepted")])
+    missing_calls, review_calls = _wire(monkeypatch, book)
+
+    NextDayBidCheck((time(8, 0),)).maybe_run(
+        _config(resources=("SAH_ESR1", "SAH_ESR2")), datetime(2026, 9, 13, 8, 0)
+    )
+
+    assert missing_calls[0][2] == ("SAH_ESR2",)
+    assert review_calls == []

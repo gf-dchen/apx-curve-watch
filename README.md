@@ -1,9 +1,9 @@
 # apx-curve-watch
 
-Stores the current ERCOT operating hour's dispatch schedule bid curve, as APX
-MarketSuite holds it for us, and announces the new schedule whenever any point on
-it moves. Zero tolerance: any MW or price change on any segment counts, not just a
-"material" one.
+Stores today's dispatch schedule bid curves, as APX MarketSuite holds them for
+us, and announces the new schedule whenever any point on any hour moves. Zero
+tolerance: any MW or price change on any segment counts, not just a "material"
+one.
 
 Runs as a standalone, unattended poll loop -- not a notebook panel, so it keeps
 watching whether or not anyone has `live_monitor.py` open.
@@ -13,16 +13,22 @@ watching whether or not anyone has `live_monitor.py` open.
 1. Fetch the participant's `PRE`-stage energy book for today via
    `gfem.foundry.bidding.apx_bids.fetch_bidset` (the same call `live_monitor.py`
    uses).
-2. Take the cumulative MW->$ ladder (`apx_bids.ladder`) for the *current*
-   hour-ending, per resource.
-3. Diff it against the last snapshot stored for that (date, hour-ending).
-4. If anything moved: print the new schedule for each changed resource (not a
-   delta description), log a warning line, and post it to Teams if configured.
-5. Archive the new snapshot either way, so the store is a full history, not
-   just a change log.
+2. Take the cumulative MW->$ ladder for *every* hour-ending of the day, per
+   resource -- not just the hour being dispatched. An edit to HE20 made at
+   14:00 is news at 14:00, not six hours later when HE20 finally becomes
+   current.
+3. Diff each hour against the last snapshot stored for that (date, hour-ending).
+4. If anything moved anywhere in the day: print the new schedule for each
+   changed resource (not a delta description), log a warning line, and post it
+   to Teams if configured. One announcement per tick names every hour that
+   moved -- a single re-submission routinely rewrites a whole block of hours,
+   and that shouldn't become a block of messages.
+5. Archive a snapshot for each hour that moved, plus one the first time an hour
+   is seen at all.
 6. Once per configured wall-clock time (default every 15/10/5 min from 08:30 to
-   10:00 CT, tightening near the DAM deadline), check that *tomorrow's* book
-   has something on file and nudge if not.
+   10:00 CT, tightening near the DAM deadline), check *tomorrow's* book: nudge
+   if nothing is on file, otherwise review it against the desk rules below and
+   announce whichever ones it fails.
 
 ## Running it
 
@@ -55,8 +61,11 @@ Config knobs (all optional, see `.env.example` for defaults):
   Set it empty to disable file logging and keep console-only.
 - `TEAMS_WEBHOOK_URL` -- optional. Unset means console + log only; set it and every
   announcement also posts to that Teams incoming webhook.
+- `APX_CURVE_WATCH_CHARGE_BLOCK_HOURS` / `APX_CURVE_WATCH_CHARGE_BLOCK_MWH` /
+  `APX_CURVE_WATCH_MIN_DISCHARGE_MW` / `APX_CURVE_WATCH_CHECK_ESR_SYMMETRY` --
+  the day-ahead reasonability rules; see below.
 - `APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES` -- Central-time wall clocks at which to
-  check that *tomorrow's* energy book has something on file, and nudge if not.
+  check *tomorrow's* book.
   Default `08:30-09:00:15,09:00-09:30:10,09:30-10:00:5`: every 15 min from
   08:30-09:00, every 10 min from 09:00-09:30, every 5 min from 09:30-10:00 --
   tightening as the DAM deadline approaches. Comma-separated; each entry is
@@ -66,6 +75,54 @@ Config knobs (all optional, see `.env.example` for defaults):
   `APX_CURVE_WATCH_RESOURCES` set, a resource missing from tomorrow's book is
   named individually; left at "watch everything", only a completely empty book
   is flagged (there's no fixed resource list to check names against).
+
+## Day-ahead reasonability checks
+
+At each scheduled morning check the whole of tomorrow's book is fetched once and
+graded, and exactly one of three things happens:
+
+- **nothing on file** -> the standard missing-bids nudge, as before;
+- **on file but failing a rule** -> a warning naming every rule it fails;
+- **on file and passing everything** -> nothing at all.
+
+The rules, all configurable (defaults in brackets):
+
+1. **Charge block.** Across HE09-HE13 [`CHARGE_BLOCK_HOURS=9-13`] the site --
+   every watched resource, every hour in the block, summed -- must bid at least
+   1000 MWh of charge [`CHARGE_BLOCK_MWH`]. Reported as the shortfall plus the
+   hour-by-hour split, so a light block and a block with an empty hour are both
+   visible.
+2. **Discharge headroom.** In any hour offering *both* discharge energy and an
+   AS product, that resource's energy ladder must reach 200 MW
+   [`MIN_DISCHARGE_MW`]. Bidding only 150 MW there tells the optimizer the ESR
+   is capped at 150, so it won't co-optimize 150 MW of energy against 50 MW of
+   AS -- the capacity has to be visible on the energy curve for the stack to be
+   reachable at all. Hours with no AS offered are exempt.
+3. **ESR symmetry** [`CHECK_ESR_SYMMETRY=true`]. The ESRs are bid as one site
+   and normally mirror each other exactly, so an hour where their ladders differ
+   is nearly always a half-applied edit. Set the knob to `false` to allow split
+   bidding.
+
+Rule 2 needs the AS side of the book, which `apx_bids.fetch_bidset` filters out
+(`ProductType != "Energy"`, deliberately -- the ladder charts it feeds want
+energy). Rather than widen that shared parser, `day_book.py` repeats gfem's
+fetch from its own pieces and parses the non-energy `MarketSchedule`s here, so
+one round-trip serves both sides. AS is confirmed to ride as sibling
+`MarketSchedule` elements under the same `<BidsOffers Location=...>`, with
+`ProductType` naming the service (`ECRS`, `RRS-PFR`) and the same curve shape as
+energy. A product can appear more than once for a resource-hour (one
+`MarketSchedule` per `LinkedOfferID`); those legs are enveloped, not summed --
+the rules only ask whether AS is bid at all, so the choice can't change a
+warning.
+
+Run the same checks by hand against tomorrow's book, without waiting for the
+schedule:
+
+```bash
+uv run apx-curve-watch --review
+```
+
+It exits non-zero when anything fails, so it's usable as a pre-submission gate.
 
 ## Teams webhook
 
@@ -109,7 +166,10 @@ would mean extending that shared parser, a separate change on its own branch.
 ```
 
 Each file carries the full per-resource ladder for that hour as of that
-observation.
+observation. All 24 hours of a day get a directory, from the first tick that
+sees the day. Writes are change-driven: an hour that hasn't moved since the last
+poll is not re-archived, so a timestamped file always marks a real edit rather
+than just another tick.
 
 ## Not yet done
 
