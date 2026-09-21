@@ -142,6 +142,10 @@ def test_a_book_that_passes_every_rule_reports_nothing(monkeypatch):
         OfferCurve(r, he, [(-mw, 25.0), (0.0, 25.0)], "Slope", "Accepted")
         for r in ("SAH_ESR1", "SAH_ESR2")
         for he, mw in ((9, 100.0), (10, 200.0), (11, 200.0))
+    ] + [
+        # ...and the day has to sell somewhere, or rule 3 fires.
+        OfferCurve(r, 20, [(0.0, 65.0), (200.0, 65.0)], "Slope", "Accepted")
+        for r in ("SAH_ESR1", "SAH_ESR2")
     ]
     _missing, review_calls = _wire(monkeypatch, _day_book(curves))
 

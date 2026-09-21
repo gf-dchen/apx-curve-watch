@@ -4,6 +4,7 @@ from gfem.foundry.bidding.apx_bids import BidSet, OfferCurve
 
 from apx_curve_watch.bid_review import (
     check_charge_block,
+    check_day_sells,
     check_discharge_headroom,
     check_esr_symmetry,
     render_review,
@@ -99,7 +100,30 @@ def test_a_charge_hour_with_as_bid_is_not_a_discharge_shortfall():
     assert check_discharge_headroom(book, BOTH, 200.0) is None
 
 
-# --- rule 3: the two ESRs mirror each other ---------------------------------
+# --- rule 3: the day sells at some point ------------------------------------
+
+
+def test_a_book_that_only_charges_is_flagged():
+    # The case that slipped through in production: charge on file, discharge not
+    # built yet. Rule 2 tests hours that discharge, so a book with none has
+    # nothing for it to catch.
+    curves = _mirrored(_charge, 10, 200) + _mirrored(_charge, 11, 200)
+    finding = check_day_sells(_book(curves), BOTH)
+    assert finding is not None
+    assert finding.kind == "no-discharge"
+    assert finding.lines == ["800 MWh of charge bid site-wide, nothing to sell it back into"]
+
+
+def test_any_discharge_anywhere_satisfies_it():
+    curves = _mirrored(_charge, 10, 200) + [_discharge("SAH_ESR1", 20, 1.0)]
+    assert check_day_sells(_book(curves), BOTH) is None
+
+
+def test_a_charge_only_hour_does_not_count_as_selling():
+    assert check_day_sells(_book(_mirrored(_charge, 10, 200)), BOTH) is not None
+
+
+# --- rule 4: the two ESRs mirror each other ---------------------------------
 
 
 def test_identical_ladders_raise_nothing():
@@ -134,6 +158,7 @@ def _review(book, resources=BOTH, **overrides):
         charge_block_hours=BLOCK,
         charge_block_mwh=1000.0,
         min_discharge_mw=200.0,
+        check_discharge_present=True,
         check_symmetry=True,
     )
     kwargs.update(overrides)
@@ -161,6 +186,14 @@ def test_every_failing_rule_is_reported_not_just_the_first():
     ]
 
 
+def test_the_sell_side_check_can_be_switched_off():
+    curves = _mirrored(_charge, 10, 200)
+    assert "no-discharge" not in [f.kind for f in _review(_book(curves))] * 0 + [
+        f.kind for f in _review(_book(curves), check_discharge_present=False)
+    ]
+    assert "no-discharge" in [f.kind for f in _review(_book(curves))]
+
+
 def test_symmetry_can_be_switched_off():
     curves = [_charge("SAH_ESR1", 12, 90)]
     kinds = [f.kind for f in _review(_book(curves), check_symmetry=False)]
@@ -169,7 +202,7 @@ def test_symmetry_can_be_switched_off():
 
 def test_resources_default_to_whatever_the_book_holds():
     curves = [_charge("SAH_ESR1", 12, 90)]
-    findings = _review(_book(curves), resources=())
+    findings = _review(_book(curves), resources=(), check_discharge_present=False)
     assert [f.kind for f in findings] == ["charge-block"]  # one resource: no symmetry to check
 
 
@@ -179,7 +212,7 @@ def test_an_empty_book_is_left_to_the_missing_bids_nudge():
 
 def test_render_indents_each_finding_under_its_headline():
     curves = [_charge("SAH_ESR1", 12, 90)]
-    findings = _review(_book(curves), resources=("SAH_ESR1",))
+    findings = _review(_book(curves), resources=("SAH_ESR1",), check_discharge_present=False)
     text = render_review(findings)
     assert text.splitlines()[0].startswith("charge HE09-HE13:")
     assert text.splitlines()[1].startswith("  HE09 0")

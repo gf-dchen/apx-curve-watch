@@ -67,6 +67,7 @@ class WatchConfig:
     charge_block_hours: tuple[int, ...] = ()
     charge_block_mwh: float = DEFAULT_CHARGE_BLOCK_MWH
     min_discharge_mw: float = DEFAULT_MIN_DISCHARGE_MW
+    check_discharge_present: bool = True
     check_esr_symmetry: bool = True
 
     @classmethod
@@ -91,6 +92,9 @@ class WatchConfig:
             ),
             min_discharge_mw=float(
                 os.environ.get("APX_CURVE_WATCH_MIN_DISCHARGE_MW", DEFAULT_MIN_DISCHARGE_MW)
+            ),
+            check_discharge_present=_flag(
+                os.environ.get("APX_CURVE_WATCH_CHECK_DISCHARGE_PRESENT", "true")
             ),
             check_esr_symmetry=_flag(os.environ.get("APX_CURVE_WATCH_CHECK_ESR_SYMMETRY", "true")),
         )
