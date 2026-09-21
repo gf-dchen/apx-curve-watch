@@ -8,12 +8,14 @@ Three desk rules, each a separate finding so one failure doesn't hide another:
    simply light -- or one hour left empty -- shows up as a shortfall against
    that total.
 
-2. **Discharge headroom.** In any hour that offers BOTH discharge energy and an
-   AS product, the energy ladder must reach the resource's full 200 MW. Bidding
-   only 150 MW there tells the optimizer the ESR tops out at 150, so it won't
-   co-optimize 150 MW of energy against 50 MW of AS -- the capacity has to be
-   visible on the energy curve for the stack to be reachable at all. Hours with
-   no AS offered are exempt: a pure energy hour is free to offer less.
+2. **Discharge headroom.** Any hour that sells AS must show the resource's full
+   200 MW on its energy ladder. Bidding only 150 MW there tells the optimizer
+   the ESR tops out at 150, so it won't co-optimize 150 MW of energy against
+   50 MW of AS -- the capacity has to be visible on the energy curve for the
+   stack to be reachable at all. This holds whether or not the hour intends to
+   sell energy: an hour that only charges, or carries no energy curve at all,
+   still shows a 0 MW ceiling against AS it has already sold. Hours with no AS
+   offered are exempt -- a pure energy hour is free to offer less.
 
 3. **Something to sell.** The day has to bid discharge *somewhere*. A book that
    only charges passes every other rule -- rule 2 tests hours that discharge, and
@@ -104,12 +106,17 @@ def check_charge_block(
 def check_discharge_headroom(
     book: DayBook, resources: tuple[str, ...], min_mw: float
 ) -> Finding | None:
-    """Rule 2 -- full-capacity energy ladder wherever energy and AS are both bid."""
+    """Rule 2 -- full-capacity energy ladder wherever AS is sold.
+
+    Keyed on the AS side alone, not on the hour also discharging: a charge-only
+    hour that has sold AS still presents a 0 MW ceiling on the energy curve, and
+    so does an hour carrying no energy curve at all.
+    """
     lines = []
     for resource in resources:
         for he in ALL_HOURS:
             top = discharge_mw(book, resource, he)
-            if top <= 0 or book.as_mw(resource, he) <= 0 or top >= min_mw:
+            if book.as_mw(resource, he) <= 0 or top >= min_mw:
                 continue
             products = ", ".join(
                 f"{p} {mw:,.0f}" for p, mw in sorted(book.as_products(resource, he).items())
@@ -119,7 +126,7 @@ def check_discharge_headroom(
         return None
     return Finding(
         kind="discharge-headroom",
-        headline=f"discharge ladder under {min_mw:,.0f} MW in an hour that also bids AS:",
+        headline=f"AS sold against a discharge ladder under {min_mw:,.0f} MW:",
         lines=lines,
     )
 

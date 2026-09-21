@@ -96,9 +96,25 @@ def test_a_short_discharge_hour_without_as_is_left_alone():
     assert check_discharge_headroom(_book(_mirrored(_discharge, 20, 100)), BOTH, 200.0) is None
 
 
-def test_a_charge_hour_with_as_bid_is_not_a_discharge_shortfall():
-    book = _book(_mirrored(_charge, 9, 100), {r: {9: {"ECRS": 100.0}} for r in BOTH})
-    assert check_discharge_headroom(book, BOTH, 200.0) is None
+def test_a_charge_only_hour_that_sold_as_still_needs_the_full_ladder():
+    # The hour presents a 0 MW ceiling on the energy curve while 200 MW of ECRS
+    # is already sold against it -- worse than a short ladder, not exempt from it.
+    book = _book(_mirrored(_charge, 12, 100), {r: {12: {"ECRS": 200.0}} for r in BOTH})
+    finding = check_discharge_headroom(book, BOTH, 200.0)
+    assert finding is not None
+    assert finding.lines[0] == "SAH_ESR1 HE12: tops out at 0 MW, with ECRS 200"
+
+
+def test_an_hour_with_as_and_no_energy_curve_at_all_is_flagged():
+    book = _book([], {r: {13: {"ECRS": 200.0}} for r in BOTH})
+    finding = check_discharge_headroom(book, BOTH, 200.0)
+    assert finding is not None
+    assert finding.lines[0] == "SAH_ESR1 HE13: tops out at 0 MW, with ECRS 200"
+
+
+def test_an_hour_with_no_as_is_still_exempt():
+    # A pure energy hour is free to offer less -- nothing is stacked against it.
+    assert check_discharge_headroom(_book(_mirrored(_charge, 12, 100)), BOTH, 200.0) is None
 
 
 # --- rule 3: the day sells at some point ------------------------------------

@@ -93,12 +93,14 @@ The rules, all configurable (defaults in brackets):
    1000 MWh of charge [`CHARGE_BLOCK_MWH`]. Reported as the shortfall plus the
    hour-by-hour split, so a light block and a block with an empty hour are both
    visible.
-2. **Discharge headroom.** In any hour offering *both* discharge energy and an
-   AS product, that resource's energy ladder must reach 200 MW
-   [`MIN_DISCHARGE_MW`]. Bidding only 150 MW there tells the optimizer the ESR
-   is capped at 150, so it won't co-optimize 150 MW of energy against 50 MW of
-   AS -- the capacity has to be visible on the energy curve for the stack to be
-   reachable at all. Hours with no AS offered are exempt.
+2. **Discharge headroom.** Any hour that sells AS must show 200 MW
+   [`MIN_DISCHARGE_MW`] on that resource's energy ladder. Bidding only 150 MW
+   there tells the optimizer the ESR is capped at 150, so it won't co-optimize
+   150 MW of energy against 50 MW of AS -- the capacity has to be visible on the
+   energy curve for the stack to be reachable at all. This holds whether or not
+   the hour means to sell energy: an hour that only charges, or that carries no
+   energy curve at all, still shows a 0 MW ceiling against AS already sold.
+   Hours with no AS offered are exempt -- a pure energy hour may offer less.
 3. **Something to sell** [`CHECK_DISCHARGE_PRESENT=true`]. The day must bid
    discharge somewhere. A book that only charges otherwise passes everything --
    rule 2 tests hours that discharge, and a book with none has none to test --
