@@ -63,8 +63,8 @@ Config knobs (all optional, see `.env.example` for defaults):
   announcement also posts to that Teams incoming webhook.
 - `APX_CURVE_WATCH_CHARGE_BLOCK_HOURS` / `APX_CURVE_WATCH_CHARGE_BLOCK_MWH` /
   `APX_CURVE_WATCH_MIN_DISCHARGE_MW` / `APX_CURVE_WATCH_CHECK_DISCHARGE_PRESENT`
-  / `APX_CURVE_WATCH_CHECK_ESR_SYMMETRY` -- the day-ahead reasonability rules;
-  see below.
+  / `APX_CURVE_WATCH_CHECK_AS_PRESENT` / `APX_CURVE_WATCH_CHECK_ESR_SYMMETRY` --
+  the day-ahead reasonability rules; see below.
 - `APX_CURVE_WATCH_NEXT_DAY_CHECK_TIMES` -- Central-time wall clocks at which to
   check *tomorrow's* book.
   Default `08:30-09:00:15,09:00-09:30:10,09:30-10:00:5`: every 15 min from
@@ -104,7 +104,10 @@ The rules, all configurable (defaults in brackets):
    rule 2 tests hours that discharge, and a book with none has none to test --
    so a half-built book sails through without this. Deliberately a bare
    presence check: how much to sell, and when, is the trade.
-4. **ESR symmetry** [`CHECK_ESR_SYMMETRY=true`]. The ESRs are bid as one site
+4. **Something on the AS side** [`CHECK_AS_PRESENT=true`]. Same again for
+   ancillaries: the day must offer AS somewhere. Rule 2 only tests hours
+   carrying both legs, so a book with no AS at all gives it nothing to check.
+5. **ESR symmetry** [`CHECK_ESR_SYMMETRY=true`]. The ESRs are bid as one site
    and normally mirror each other exactly, so an hour where their ladders differ
    is nearly always a half-applied edit. Set the knob to `false` to allow split
    bidding.

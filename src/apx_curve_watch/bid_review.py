@@ -20,7 +20,11 @@ Three desk rules, each a separate finding so one failure doesn't hide another:
    a book with no discharge at all simply has none to test -- so a half-built
    book sails through without this.
 
-4. **ESR symmetry.** The two ESRs are bid as one site and normally mirror each
+4. **Something on the AS side.** Same again for ancillaries: the day has to
+   offer AS *somewhere*. Rule 2 only tests hours that already carry both legs,
+   so a book with no AS at all gives it nothing to check.
+
+5. **ESR symmetry.** The two ESRs are bid as one site and normally mirror each
    other exactly, so an hour where their ladders differ is nearly always a
    half-applied edit rather than an intended split.
 
@@ -137,12 +141,30 @@ def check_day_sells(book: DayBook, resources: tuple[str, ...]) -> Finding | None
     )
 
 
+def check_day_bids_as(book: DayBook, resources: tuple[str, ...]) -> Finding | None:
+    """Rule 4 -- the day offers AS at some point.
+
+    A presence check for the same reason as ``check_day_sells``: which services
+    to offer, and how much, is the trade -- but a whole day with nothing on the
+    AS side is a book that isn't finished.
+    """
+    if any(book.as_mw(r, he) > 0 for r in resources for he in ALL_HOURS):
+        return None
+    selling = sorted({he for r in resources for he in ALL_HOURS if discharge_mw(book, r, he) > 0})
+    detail = (
+        "discharge bid in " + ", ".join(f"HE{he:02d}" for he in selling) + ", none of it with AS"
+        if selling
+        else "nothing on the AS side of the book at all"
+    )
+    return Finding(kind="no-as", headline="no AS offered in any hour of the day", lines=[detail])
+
+
 def _ladder_text(points: list[tuple[float, float]]) -> str:
     return ", ".join(f"{mw:,.0f}@${price:,.2f}" for mw, price in points) or "(nothing)"
 
 
 def check_esr_symmetry(book: DayBook, resources: tuple[str, ...]) -> Finding | None:
-    """Rule 4 -- every reviewed resource's energy ladder identical, hour by hour."""
+    """Rule 5 -- every reviewed resource's energy ladder identical, hour by hour."""
     if len(resources) < 2:
         return None
     lines = []
@@ -169,6 +191,7 @@ def review(
     charge_block_mwh: float,
     min_discharge_mw: float,
     check_discharge_present: bool,
+    check_as_present: bool,
     check_symmetry: bool,
 ) -> list[Finding]:
     """Every rule that fails on ``book``; empty when the book looks right."""
@@ -178,6 +201,7 @@ def review(
     candidates = [
         check_charge_block(book, names, charge_block_hours, charge_block_mwh),
         check_day_sells(book, names) if check_discharge_present else None,
+        check_day_bids_as(book, names) if check_as_present else None,
         check_discharge_headroom(book, names, min_discharge_mw),
         check_esr_symmetry(book, names) if check_symmetry else None,
     ]

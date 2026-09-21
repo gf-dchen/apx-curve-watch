@@ -80,6 +80,7 @@ class NextDayBidCheck:
                 charge_block_mwh=config.charge_block_mwh,
                 min_discharge_mw=config.min_discharge_mw,
                 check_discharge_present=config.check_discharge_present,
+                check_as_present=config.check_as_present,
                 check_symmetry=config.check_esr_symmetry,
             ),
             teams_webhook_url=config.teams_webhook_url,

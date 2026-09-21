@@ -147,7 +147,8 @@ def test_a_book_that_passes_every_rule_reports_nothing(monkeypatch):
         OfferCurve(r, 20, [(0.0, 65.0), (200.0, 65.0)], "Slope", "Accepted")
         for r in ("SAH_ESR1", "SAH_ESR2")
     ]
-    _missing, review_calls = _wire(monkeypatch, _day_book(curves))
+    as_offers = {r: {20: {"ECRS": 100.0}} for r in ("SAH_ESR1", "SAH_ESR2")}
+    _missing, review_calls = _wire(monkeypatch, _day_book(curves, as_offers))
 
     NextDayBidCheck((time(8, 0),)).maybe_run(
         _config(resources=("SAH_ESR1", "SAH_ESR2")), datetime(2026, 9, 13, 8, 0)
